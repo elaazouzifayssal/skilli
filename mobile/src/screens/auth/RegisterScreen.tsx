@@ -1,14 +1,35 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { useAuthStore } from '../../store/authStore';
 
 export default function RegisterScreen({ navigation }: any) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const register = useAuthStore((state) => state.register);
 
-  const handleRegister = () => {
-    // TODO: Implement registration logic
-    console.log('Register with:', name, email, password);
+  const handleRegister = async () => {
+    if (!name || !email || !password) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await register(name.trim(), email.trim(), password, phone.trim() || undefined);
+      // Navigation happens automatically when isAuthenticated changes
+    } catch (error: any) {
+      Alert.alert('Erreur d\'inscription', error.message || 'Une erreur est survenue');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -34,14 +55,30 @@ export default function RegisterScreen({ navigation }: any) {
 
         <TextInput
           style={styles.input}
-          placeholder="Mot de passe"
+          placeholder="Mot de passe (min. 6 caractères)"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleRegister}>
-          <Text style={styles.buttonText}>Créer un compte</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Téléphone (optionnel)"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+        />
+
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleRegister}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Créer un compte</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate('Login')}>
@@ -94,5 +131,8 @@ const styles = StyleSheet.create({
     color: '#6366f1',
     textAlign: 'center',
     marginTop: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
 });

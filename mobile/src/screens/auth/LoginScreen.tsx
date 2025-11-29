@@ -1,13 +1,28 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { useAuthStore } from '../../store/authStore';
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const login = useAuthStore((state) => state.login);
 
-  const handleLogin = () => {
-    // TODO: Implement login logic
-    console.log('Login with:', email, password);
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await login(email.trim(), password);
+      // Navigation happens automatically when isAuthenticated changes
+    } catch (error: any) {
+      Alert.alert('Erreur de connexion', error.message || 'Email ou mot de passe incorrect');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -32,8 +47,16 @@ export default function LoginScreen({ navigation }: any) {
           secureTextEntry
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Se connecter</Text>
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Se connecter</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate('Register')}>
@@ -83,5 +106,8 @@ const styles = StyleSheet.create({
     color: '#6366f1',
     textAlign: 'center',
     marginTop: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
 });

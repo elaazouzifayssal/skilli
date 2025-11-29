@@ -25,9 +25,9 @@ export default function LandingScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity onPress={() => navigation.navigate('Explore')}>
-        <Text style={styles.exploreText}>Explorer sans compte</Text>
-      </TouchableOpacity>
+      <Text style={styles.footerText}>
+        En vous inscrivant, vous pourrez découvrir et réserver des sessions
+      </Text>
     </View>
   );
 }
@@ -80,9 +80,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  exploreText: {
+  footerText: {
     marginTop: 20,
-    color: '#6366f1',
+    color: '#6b7280',
     fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });

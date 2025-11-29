@@ -24,9 +24,11 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   const port = process.env.PORT || 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0'); // Listen on all network interfaces
 
-  console.log(`🚀 Backend server is running on http://localhost:${port}/api`);
+  console.log(`🚀 Backend server is running on:`);
+  console.log(`   Local:   http://localhost:${port}/api`);
+  console.log(`   Network: http://192.168.11.102:${port}/api`);
 }
 
 bootstrap();

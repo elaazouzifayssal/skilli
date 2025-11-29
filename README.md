@@ -239,9 +239,15 @@ API_URL="http://localhost:3000"
 - Reset database: `cd backend && npx prisma migrate reset`
 - Check PostgreSQL logs: `docker-compose logs postgres`
 
-## Next Steps
+## Features Status
 
-- [ ] Implement authentication (JWT)
+- [x] **Authentication (JWT)** ✅
+  - User registration with email/password
+  - Login with JWT access & refresh tokens
+  - Protected routes with JWT guard
+  - Persistent login (tokens stored in AsyncStorage)
+  - Logout functionality
+  - Profile screen with user info
 - [ ] Create user and provider profiles
 - [ ] Build session management
 - [ ] Add booking system
@@ -249,6 +255,22 @@ API_URL="http://localhost:3000"
 - [ ] Build feed & posts
 - [ ] Add messaging
 - [ ] Implement notifications
+
+## Testing Authentication
+
+See detailed testing guide in [docs/AUTH_SETUP_GUIDE.md](docs/AUTH_SETUP_GUIDE.md)
+
+Quick test:
+```bash
+# 1. Start backend
+cd backend && npm run start:dev
+
+# 2. In another terminal, start mobile
+cd mobile && npx expo start
+
+# 3. Register a new user in the app
+# 4. Test login/logout flow
+```
 
 ## Tech Stack
 

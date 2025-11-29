@@ -1,0 +1,244 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - represents both clients and providers
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Hashed password
+  name      String
+  phone     String?
+
+  // User can be client, provider, or both
+  isProvider Boolean  @default(false)
+  isClient   Boolean  @default(true)
+
+  // Provider profile (optional, filled if isProvider = true)
+  profile    ProviderProfile?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  refreshTokens RefreshToken[]
+  sessions      Session[]     // Sessions created by this user (as provider)
+  bookings      Booking[]     // Bookings made by this user (as client)
+  notifications Notification[] // Notifications for this user
+  sentMessages     Message[]  @relation("SentMessages")
+  receivedMessages Message[]  @relation("ReceivedMessages")
+  conversations1   Conversation[] @relation("User1Conversations")
+  conversations2   Conversation[] @relation("User2Conversations")
+
+  @@map("users")
+}
+
+// Provider profile - additional info for providers
+model ProviderProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Provider details
+  bio         String?
+  photo       String?  // URL to profile photo
+  city        String?
+  languages   String[] // e.g., ["Français", "Arabe", "Anglais"]
+
+  // Education level (e.g., "Bac+5", "Bac+3")
+  level       String?
+
+  // Skills/categories (we'll link to Skills table later)
+  skills      String[] // For now, array of skill names
+
+  // Rating
+  rating      Float    @default(0.0)
+  totalRatings Int     @default(0)
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("provider_profiles")
+}
+
+// Refresh tokens for JWT authentication
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+  @@index([userId])
+}
+
+// Session model - sessions/events created by providers
+model Session {
+  id          String   @id @default(uuid())
+  providerId  String
+  provider    User     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  // Session details
+  title       String
+  description String
+  skills      String[] // Skills/categories this session covers
+
+  // Scheduling
+  date        DateTime
+  duration    Int      // Duration in minutes
+
+  // Location
+  isOnline    Boolean  @default(true)
+  location    String?  // City/address if presential
+
+  // Pricing & Capacity
+  price       Float    // Price in MAD
+  maxParticipants Int  @default(1)
+
+  // Engagement metrics
+  likes       Int      @default(0)
+  interested  Int      @default(0)
+
+  // Status
+  status      String   @default("upcoming") // upcoming, completed, cancelled
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  bookings    Booking[]
+
+  @@map("sessions")
+  @@index([providerId])
+  @@index([date])
+  @@index([status])
+}
+
+// Booking model - when a client books a session
+model Booking {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  clientId  String
+  client    User     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // Booking details
+  status    String   @default("pending") // pending, confirmed, completed, cancelled
+
+  // Payment
+  amount    Float    // Amount paid in MAD
+  paymentStatus String @default("pending") // pending, paid, refunded
+
+  // Rating (after session completion)
+  rating    Int?     // 1-5 stars
+  review    String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("bookings")
+  @@index([sessionId])
+  @@index([clientId])
+  @@index([status])
+  @@unique([sessionId, clientId]) // A client can only book a session once
+}
+
+// Notification model - notifications for users
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Notification details
+  type      String   // booking, reminder, rating, update, message
+  title     String
+  message   String
+  read      Boolean  @default(false)
+
+  // Optional references
+  sessionId String?
+  bookingId String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notifications")
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+// Conversation model - one-to-one conversation between two users
+model Conversation {
+  id        String   @id @default(uuid())
+
+  // Two participants
+  user1Id   String
+  user1     User     @relation("User1Conversations", fields: [user1Id], references: [id], onDelete: Cascade)
+
+  user2Id   String
+  user2     User     @relation("User2Conversations", fields: [user2Id], references: [id], onDelete: Cascade)
+
+  // Last message info for list preview
+  lastMessageText String?
+  lastMessageAt   DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  messages  Message[]
+
+  @@map("conversations")
+  @@unique([user1Id, user2Id]) // Ensure only one conversation between two users
+  @@index([user1Id])
+  @@index([user2Id])
+  @@index([lastMessageAt])
+}
+
+// Message model - individual messages in a conversation
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId       String
+  sender         User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  receiverId     String
+  receiver       User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  // Message content
+  text           String
+  read           Boolean  @default(false)
+
+  // Timestamps
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("messages")
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+}
