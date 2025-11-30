@@ -248,13 +248,238 @@ API_URL="http://localhost:3000"
   - Persistent login (tokens stored in AsyncStorage)
   - Logout functionality
   - Profile screen with user info
-- [ ] Create user and provider profiles
-- [ ] Build session management
-- [ ] Add booking system
-- [ ] Implement requests & offers
-- [ ] Build feed & posts
-- [ ] Add messaging
-- [ ] Implement notifications
+- [x] **User & Provider Profiles** ✅
+  - Create and edit provider profiles
+  - Provider photo upload
+  - Skills, education level, languages
+  - Rating system integration
+- [x] **Session Management** ✅
+  - Create, edit, and delete sessions
+  - Online and in-person sessions
+  - Date/time scheduling with native pickers
+  - Capacity management
+  - Browse sessions with filters
+- [x] **Booking System** ✅
+  - Book sessions
+  - Cancel bookings
+  - View booking history
+  - Booking status tracking
+- [x] **Reviews & Ratings** ✅
+  - Rate completed sessions (1-5 stars)
+  - Write text reviews
+  - Automatic rating calculation for providers
+  - Review display on sessions and profiles
+- [x] **Messaging** ✅
+  - Real-time conversations
+  - Message providers and clients
+  - Conversation list
+  - Unread message indicators
+- [x] **Notifications** ✅
+  - Booking confirmations
+  - New messages
+  - Offer updates
+  - Session reminders
+- [x] **Requests & Offers** ✅
+  - Create service requests
+  - Browse open requests
+  - Submit offers as provider
+  - Accept/reject offers
+  - Budget range specification
+  - Skill-based filtering
+- [x] **Feed & Posts** ✅ NEW!
+  - Providers can create posts to share expertise
+  - Browse posts from all providers
+  - Like/unlike posts
+  - Skills tags and categories
+  - Filter by skill, category, or provider
+  - Rich post cards with author info and ratings
+  - Post detail screen
+- [ ] Payment integration (Coming soon)
+
+## Testing Requests & Offers
+
+### Setup
+
+1. **Apply database migrations:**
+   ```bash
+   cd backend
+   npx prisma migrate dev
+   npx prisma generate
+   ```
+
+2. **Start backend:**
+   ```bash
+   cd backend
+   npm run start:dev
+   ```
+
+3. **Start mobile app:**
+   ```bash
+   cd mobile
+   npx expo start
+   ```
+
+### Testing Flow
+
+**As a Client (Creating Requests):**
+
+1. Log in to the app as a regular user
+2. Navigate to "Demandes" tab (bottom navigation)
+3. Tap "Nouvelle demande" button
+4. Fill in the request form:
+   - Title: "Besoin d'un prof de mathématiques"
+   - Description: Describe what you're looking for
+   - Select skills (e.g., Mathématiques, Physique)
+   - Choose education level (optional)
+   - Select request type (online/presential/both)
+   - Set budget range (optional)
+5. Tap "Publier ma demande"
+6. View your request in "Profile" → "Mes demandes"
+
+**As a Provider (Submitting Offers):**
+
+1. Log in as a provider (or become a provider in settings)
+2. Navigate to "Demandes" tab
+3. Browse open requests
+4. Tap on an interesting request
+5. Tap "Envoyer une offre" button
+6. Fill in the offer form:
+   - Write a proposal message
+   - Set your price
+   - Estimate duration (hours)
+   - Select first available date
+7. Tap "Envoyer mon offre"
+8. View your offers in "Profile" → "Mes offres"
+
+**Accepting Offers:**
+
+1. As the request owner, go to "Mes demandes"
+2. Tap on a request that has received offers
+3. Review all offers with provider info, price, duration
+4. Tap "Accepter" on your preferred offer
+5. Confirm acceptance
+6. The request status changes to "Terminé"
+7. All other pending offers are automatically rejected
+
+### API Endpoints
+
+**Requests:**
+- `POST /api/requests` - Create new request
+- `GET /api/requests` - Get all requests (with filters)
+- `GET /api/requests/me` - Get my requests
+- `GET /api/requests/:id` - Get single request
+- `PATCH /api/requests/:id` - Update request
+- `PATCH /api/requests/:id/cancel` - Cancel request
+- `DELETE /api/requests/:id` - Delete request
+
+**Offers:**
+- `POST /api/offers` - Create new offer
+- `GET /api/offers/request/:requestId` - Get all offers for a request
+- `GET /api/offers/me` - Get my offers
+- `GET /api/offers/:id` - Get single offer
+- `PATCH /api/offers/:id` - Update offer
+- `PATCH /api/offers/:id/accept` - Accept offer
+- `PATCH /api/offers/:id/reject` - Reject offer
+- `DELETE /api/offers/:id` - Delete offer
+
+## Testing Feed & Posts
+
+### Setup
+
+1. **Apply database migrations:**
+   ```bash
+   cd backend
+   npx prisma migrate dev
+   npx prisma generate
+   ```
+
+2. **Start backend:**
+   ```bash
+   cd backend
+   npm run start:dev
+   ```
+
+3. **Start mobile app:**
+   ```bash
+   cd mobile
+   npx expo start
+   ```
+
+### Testing Flow
+
+**As a Provider (Creating Posts):**
+
+1. Log in as a provider (or become a provider in settings)
+2. Navigate to "Feed" tab (bottom navigation)
+3. Tap the "+" button in the header
+4. Fill in the post form:
+   - Content: Share your expertise, tips, or news
+   - Select at least one skill tag
+   - Optionally choose a category (Conseil, Tutoriel, Astuce, etc.)
+5. Tap "Publier"
+6. Your post appears at the top of the feed
+
+**As Any User (Browsing Posts):**
+
+1. Navigate to "Feed" tab
+2. Scroll through posts from providers
+3. See author info, rating, skills tags, and category
+4. Tap a post to view full details
+5. Like/unlike posts with the heart button
+6. Tap on author avatar/name to view their profile
+
+**Viewing Post Details:**
+
+1. Tap any post card in the feed
+2. View the full post content
+3. See complete author information with rating
+4. Like/unlike the post
+5. If you're the author, delete the post using trash icon
+
+**Managing Your Posts:**
+
+1. As a provider, create multiple posts
+2. View them in the feed
+3. Tap on your post to see details
+4. Delete your posts using the trash icon
+5. Check like counts on your posts
+
+### API Endpoints
+
+**Posts:**
+- `POST /api/posts` - Create new post (providers only)
+- `GET /api/posts` - Get all posts (with filters: skill, category, authorId, page, limit)
+- `GET /api/posts/me` - Get my posts
+- `GET /api/posts/user/:userId` - Get posts by specific user
+- `GET /api/posts/:id` - Get single post
+- `POST /api/posts/:id/like` - Like a post
+- `DELETE /api/posts/:id/unlike` - Unlike a post
+- `DELETE /api/posts/:id` - Delete post (author only)
+
+### Features
+
+**Business Rules:**
+- Only providers can create posts (checked via `user.isProvider`)
+- All users (clients and providers) can view and like posts
+- Like/unlike operations are atomic (using transactions)
+- Duplicate likes are prevented with unique constraint
+- Authors can delete their own posts
+- Posts show `isLiked` status per user
+
+**Post Structure:**
+- Content: Up to 5000 characters
+- Skills: Array of skill tags (required)
+- Category: Optional category (Conseil, Tutoriel, Astuce, Promotion, Actualité, Question)
+- Like count: Automatically managed
+- Comment count: Placeholder for future feature
+
+**Feed Features:**
+- Posts ordered by newest first
+- Pull-to-refresh support
+- Infinite scroll pagination (20 posts per page)
+- Rich post cards with author photo, name, city, rating
+- Expandable content with "Afficher plus"
+- Empty state with call-to-action
 
 ## Testing Authentication
 

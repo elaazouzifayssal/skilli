@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { sessionsService } from '../services/sessions.service';
 import { messagesService } from '../services/messages.service';
+import { reviewsService, Review } from '../services/reviews.service';
 import { useAuthStore } from '../store/authStore';
 import { getImageUrl } from '../utils/imageUtils';
 
@@ -13,10 +14,24 @@ export default function SessionDetailScreen({ route, navigation }: any) {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [canReview, setCanReview] = useState(false);
+  const [loadingReviews, setLoadingReviews] = useState(true);
 
   useEffect(() => {
     loadSession();
+    loadReviews();
+    checkCanReview();
   }, [sessionId]);
+
+  // Reload when screen gains focus (e.g., after leaving a review)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadReviews();
+      checkCanReview();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const loadSession = async () => {
     try {
@@ -69,6 +84,26 @@ export default function SessionDetailScreen({ route, navigation }: any) {
     });
   };
 
+  const loadReviews = async () => {
+    try {
+      const data = await reviewsService.getSessionReviews(sessionId);
+      setReviews(data);
+    } catch (error) {
+      console.error('Error loading reviews:', error);
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
+
+  const checkCanReview = async () => {
+    try {
+      const result = await reviewsService.canReviewSession(sessionId);
+      setCanReview(result.canReview);
+    } catch (error) {
+      console.error('Error checking can review:', error);
+    }
+  };
+
   const handleMessageProvider = async () => {
     if (!session?.provider) return;
 
@@ -90,6 +125,18 @@ export default function SessionDetailScreen({ route, navigation }: any) {
       console.error('Error creating conversation:', error);
       Alert.alert('Erreur', 'Impossible de démarrer une conversation');
     }
+  };
+
+  const renderStars = (rating: number) => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <Text key={i} style={styles.star}>
+          {i <= rating ? '⭐' : '☆'}
+        </Text>
+      );
+    }
+    return stars;
   };
 
   if (loading) {
@@ -163,12 +210,12 @@ export default function SessionDetailScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {session.provider && (
+        {session.provider && session.provider.profile && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Provider</Text>
             <TouchableOpacity
               style={styles.providerCard}
-              onPress={() => navigation.navigate('ProviderDetail', { providerId: session.provider.profile?.id })}
+              onPress={() => navigation.navigate('ProviderDetail', { providerId: session.provider.id })}
             >
               {getImageUrl(session.provider.profile?.photo) ? (
                 <Image source={{ uri: getImageUrl(session.provider.profile.photo)! }} style={styles.providerAvatar} />
@@ -198,6 +245,84 @@ export default function SessionDetailScreen({ route, navigation }: any) {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Edit button for session owner */}
+        {isOwnSession && !isPast && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => navigation.navigate('EditSession', { sessionId: session.id })}
+            >
+              <Text style={styles.editButtonText}>✏️ Modifier la session</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Reviews Section */}
+        <View style={styles.section}>
+          <View style={styles.reviewsHeader}>
+            <Text style={styles.sectionTitle}>
+              Avis ({reviews.length})
+            </Text>
+            {session.totalRatings > 0 && (
+              <View style={styles.ratingBadge}>
+                <Text style={styles.ratingNumber}>⭐ {session.rating.toFixed(1)}</Text>
+              </View>
+            )}
+          </View>
+
+          {canReview && !isOwnSession && (
+            <TouchableOpacity
+              style={styles.leaveReviewButton}
+              onPress={() =>
+                navigation.navigate('RateSession', {
+                  session,
+                  providerId: session.providerId,
+                })
+              }
+            >
+              <Text style={styles.leaveReviewButtonText}>⭐ Noter la session</Text>
+            </TouchableOpacity>
+          )}
+
+          {loadingReviews ? (
+            <ActivityIndicator style={{ marginTop: 20 }} color="#6366f1" />
+          ) : reviews.length === 0 ? (
+            <Text style={styles.emptyText}>Aucun avis pour le moment</Text>
+          ) : (
+            reviews.map((review) => (
+              <View key={review.id} style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  {getImageUrl(review.reviewer.profile?.photo) ? (
+                    <Image
+                      source={{ uri: getImageUrl(review.reviewer.profile.photo)! }}
+                      style={styles.reviewAvatar}
+                    />
+                  ) : (
+                    <View style={styles.reviewAvatar}>
+                      <Text style={styles.reviewAvatarText}>
+                        {review.reviewer.name?.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.reviewInfo}>
+                    <Text style={styles.reviewerName}>{review.reviewer.name}</Text>
+                    <View style={styles.reviewStars}>{renderStars(review.rating)}</View>
+                  </View>
+                  <Text style={styles.reviewDate}>
+                    {new Date(review.createdAt).toLocaleDateString('fr-FR', {
+                      day: 'numeric',
+                      month: 'short',
+                    })}
+                  </Text>
+                </View>
+                {review.comment && (
+                  <Text style={styles.reviewComment}>{review.comment}</Text>
+                )}
+              </View>
+            ))
+          )}
+        </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -256,6 +381,24 @@ const styles = StyleSheet.create({
   providerRating: { fontSize: 14, color: '#6b7280', marginTop: 2 },
   messageButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   messageButtonText: { fontSize: 20 },
+  reviewsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  ratingBadge: { backgroundColor: '#fef3c7', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  ratingNumber: { fontSize: 14, fontWeight: '600', color: '#d97706' },
+  leaveReviewButton: { backgroundColor: '#6366f1', padding: 14, borderRadius: 12, alignItems: 'center', marginBottom: 16 },
+  leaveReviewButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  emptyText: { fontSize: 14, color: '#9ca3af', textAlign: 'center', padding: 20 },
+  reviewCard: { backgroundColor: '#f9fafb', borderRadius: 12, padding: 16, marginBottom: 12 },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  reviewAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  reviewAvatarText: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  reviewInfo: { flex: 1 },
+  reviewerName: { fontSize: 15, fontWeight: '600', color: '#1f2937', marginBottom: 4 },
+  reviewStars: { flexDirection: 'row', gap: 2 },
+  star: { fontSize: 14 },
+  reviewDate: { fontSize: 12, color: '#9ca3af' },
+  reviewComment: { fontSize: 14, color: '#4b5563', lineHeight: 20, marginTop: 8 },
+  editButton: { backgroundColor: '#6366f1', padding: 14, borderRadius: 12, alignItems: 'center' },
+  editButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   footer: { backgroundColor: '#fff', padding: 20, paddingBottom: 30, borderTopWidth: 1, borderTopColor: '#e5e7eb', flexDirection: 'row', alignItems: 'center', gap: 16 },
   priceContainer: { flex: 1 },
   priceLabel: { fontSize: 12, color: '#6b7280', marginBottom: 4 },

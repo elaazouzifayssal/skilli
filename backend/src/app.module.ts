@@ -13,6 +13,10 @@ import { BookingsModule } from './bookings/bookings.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MessagesModule } from './messages/messages.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { RequestsModule } from './requests/requests.module';
+import { OffersModule } from './offers/offers.module';
+import { PostsModule } from './posts/posts.module';
 
 @Module({
   imports: [
@@ -35,6 +39,10 @@ import { MessagesModule } from './messages/messages.module';
     UploadsModule,
     NotificationsModule,
     MessagesModule,
+    ReviewsModule,
+    RequestsModule,
+    OffersModule,
+    PostsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

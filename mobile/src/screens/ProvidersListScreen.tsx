@@ -1,70 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, TextInput, ScrollView, Image,
 } from 'react-native';
-import { providersService } from '../services/providers.service';
+import { useProviderProfilesQuery } from '../services/providerProfiles';
 import { MOROCCAN_CITIES } from '../constants/moroccanCities';
 import { getImageUrl } from '../utils/imageUtils';
 
 export default function ProvidersListScreen({ navigation }: any) {
-  const [allProviders, setAllProviders] = useState<any[]>([]);
-  const [providers, setProviders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
 
-  const loadProviders = async () => {
-    try {
-      const data = await providersService.getAll();
-      setAllProviders(data);
-      setProviders(data);
-    } catch (error) {
-      console.error('Error loading providers:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  // Fetch providers using React Query with filters
+  const filters = useMemo(() => ({
+    city: selectedCity || undefined,
+    search: searchQuery.trim() || undefined,
+  }), [selectedCity, searchQuery]);
 
-  const applyFilters = () => {
-    let filtered = [...allProviders];
-
-    // Filter by city
-    if (selectedCity) {
-      filtered = filtered.filter(p => p.city === selectedCity);
-    }
-
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(p =>
-        p.user.name.toLowerCase().includes(query) ||
-        p.bio.toLowerCase().includes(query) ||
-        p.skills.some((skill: string) => skill.toLowerCase().includes(query))
-      );
-    }
-
-    setProviders(filtered);
-  };
-
-  useEffect(() => {
-    loadProviders();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-  }, [searchQuery, selectedCity, allProviders]);
+  const { data: allProviders = [], isLoading, refetch, isRefetching, error } = useProviderProfilesQuery(filters);
 
   const onRefresh = () => {
-    setRefreshing(true);
-    loadProviders();
+    refetch();
   };
 
   const renderProvider = ({ item }: any) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => navigation.navigate('ProviderDetail', { providerId: item.userId })}
+      onPress={() => navigation.navigate('PublicProviderProfile', { providerId: item.userId })}
     >
       <View style={styles.header}>
         {getImageUrl(item.photo) ? (
@@ -123,7 +84,7 @@ export default function ProvidersListScreen({ navigation }: any) {
     </TouchableOpacity>
   );
 
-  if (loading) {
+  if (isLoading && !isRefetching) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#6366f1" />
@@ -135,7 +96,7 @@ export default function ProvidersListScreen({ navigation }: any) {
     <View style={styles.container}>
       <View style={styles.headerSection}>
         <Text style={styles.headerTitle}>Providers</Text>
-        <Text style={styles.headerSubtitle}>{providers.length} providers</Text>
+        <Text style={styles.headerSubtitle}>{allProviders.length} providers</Text>
 
         <TextInput
           style={styles.searchInput}
@@ -171,11 +132,11 @@ export default function ProvidersListScreen({ navigation }: any) {
       </View>
 
       <FlatList
-        data={providers}
+        data={allProviders}
         renderItem={renderProvider}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>Aucun provider trouvé</Text>

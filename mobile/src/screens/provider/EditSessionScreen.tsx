@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Switch,
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Switch, Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { sessionsService } from '../../services/sessions.service';
 import { MOROCCAN_CITIES } from '../../constants/moroccanCities';
 
@@ -16,8 +17,9 @@ export default function EditSessionScreen({ route, navigation }: any) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [skills, setSkills] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  const [sessionDate, setSessionDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [duration, setDuration] = useState('');
   const [isOnline, setIsOnline] = useState(true);
   const [location, setLocation] = useState('');
@@ -37,12 +39,8 @@ export default function EditSessionScreen({ route, navigation }: any) {
       setDescription(session.description);
       setSkills(session.skills.join(', '));
 
-      // Parse date and time
-      const sessionDate = new Date(session.date);
-      const dateStr = sessionDate.toISOString().split('T')[0]; // YYYY-MM-DD
-      const timeStr = sessionDate.toTimeString().slice(0, 5); // HH:MM
-      setDate(dateStr);
-      setTime(timeStr);
+      // Set date as Date object
+      setSessionDate(new Date(session.date));
 
       setDuration(session.duration.toString());
       setIsOnline(session.isOnline);
@@ -71,10 +69,6 @@ export default function EditSessionScreen({ route, navigation }: any) {
       Alert.alert('Erreur', 'Au moins une compétence est requise');
       return;
     }
-    if (!date || !time) {
-      Alert.alert('Erreur', 'La date et l\'heure sont obligatoires');
-      return;
-    }
     if (!duration || parseInt(duration) <= 0) {
       Alert.alert('Erreur', 'La durée doit être supérieure à 0');
       return;
@@ -98,7 +92,7 @@ export default function EditSessionScreen({ route, navigation }: any) {
         title: title.trim(),
         description: description.trim(),
         skills: skills.split(',').map(s => s.trim()).filter(s => s),
-        date: `${date}T${time}:00.000Z`,
+        date: sessionDate.toISOString(),
         duration: parseInt(duration),
         isOnline,
         location: isOnline ? undefined : location.trim(),
@@ -115,6 +109,66 @@ export default function EditSessionScreen({ route, navigation }: any) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'ios') {
+      // On iOS, update immediately as user scrolls (picker stays open)
+      if (selectedDate) {
+        const newDate = new Date(sessionDate);
+        newDate.setFullYear(selectedDate.getFullYear());
+        newDate.setMonth(selectedDate.getMonth());
+        newDate.setDate(selectedDate.getDate());
+        setSessionDate(newDate);
+      }
+    } else {
+      // On Android, close picker after selection
+      setShowDatePicker(false);
+      if (selectedDate && event.type !== 'dismissed') {
+        const newDate = new Date(sessionDate);
+        newDate.setFullYear(selectedDate.getFullYear());
+        newDate.setMonth(selectedDate.getMonth());
+        newDate.setDate(selectedDate.getDate());
+        setSessionDate(newDate);
+      }
+    }
+  };
+
+  const onTimeChange = (event: any, selectedTime?: Date) => {
+    if (Platform.OS === 'ios') {
+      // On iOS, update immediately as user scrolls (picker stays open)
+      if (selectedTime) {
+        const newDate = new Date(sessionDate);
+        newDate.setHours(selectedTime.getHours());
+        newDate.setMinutes(selectedTime.getMinutes());
+        setSessionDate(newDate);
+      }
+    } else {
+      // On Android, close picker after selection
+      setShowTimePicker(false);
+      if (selectedTime && event.type !== 'dismissed') {
+        const newDate = new Date(sessionDate);
+        newDate.setHours(selectedTime.getHours());
+        newDate.setMinutes(selectedTime.getMinutes());
+        setSessionDate(newDate);
+      }
+    }
+  };
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  };
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const handleDelete = () => {
@@ -196,24 +250,82 @@ export default function EditSessionScreen({ route, navigation }: any) {
         <View style={styles.row}>
           <View style={[styles.section, styles.halfWidth]}>
             <Text style={styles.label}>Date *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              value={date}
-              onChangeText={setDate}
-            />
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={styles.pickerButtonText}>{formatDate(sessionDate)}</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={[styles.section, styles.halfWidth]}>
             <Text style={styles.label}>Heure *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="HH:MM"
-              value={time}
-              onChangeText={setTime}
-            />
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => setShowTimePicker(true)}
+            >
+              <Text style={styles.pickerButtonText}>{formatTime(sessionDate)}</Text>
+            </TouchableOpacity>
           </View>
         </View>
+
+{Platform.OS === 'ios' && showDatePicker && (
+          <View style={styles.pickerContainer}>
+            <View style={styles.pickerHeader}>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                <Text style={styles.pickerHeaderButton}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                <Text style={[styles.pickerHeaderButton, styles.pickerHeaderButtonDone]}>Terminé</Text>
+              </TouchableOpacity>
+            </View>
+            <DateTimePicker
+              value={sessionDate}
+              mode="date"
+              display="spinner"
+              onChange={onDateChange}
+              minimumDate={new Date()}
+            />
+          </View>
+        )}
+
+        {Platform.OS === 'android' && showDatePicker && (
+          <DateTimePicker
+            value={sessionDate}
+            mode="date"
+            display="default"
+            onChange={onDateChange}
+            minimumDate={new Date()}
+          />
+        )}
+
+        {Platform.OS === 'ios' && showTimePicker && (
+          <View style={styles.pickerContainer}>
+            <View style={styles.pickerHeader}>
+              <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                <Text style={styles.pickerHeaderButton}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                <Text style={[styles.pickerHeaderButton, styles.pickerHeaderButtonDone]}>Terminé</Text>
+              </TouchableOpacity>
+            </View>
+            <DateTimePicker
+              value={sessionDate}
+              mode="time"
+              display="spinner"
+              onChange={onTimeChange}
+            />
+          </View>
+        )}
+
+        {Platform.OS === 'android' && showTimePicker && (
+          <DateTimePicker
+            value={sessionDate}
+            mode="time"
+            display="default"
+            onChange={onTimeChange}
+          />
+        )}
 
         <View style={styles.section}>
           <Text style={styles.label}>Durée (minutes) *</Text>
@@ -317,6 +429,12 @@ const styles = StyleSheet.create({
   textArea: { minHeight: 100, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: 12 },
   halfWidth: { flex: 1 },
+  pickerButton: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 12, padding: 16, backgroundColor: '#fff', justifyContent: 'center' },
+  pickerButtonText: { fontSize: 16, color: '#1f2937' },
+  pickerContainer: { backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb', marginTop: 12 },
+  pickerHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  pickerHeaderButton: { fontSize: 16, color: '#6366f1' },
+  pickerHeaderButtonDone: { fontWeight: '600' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   saveButton: { backgroundColor: '#10b981', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 12 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },

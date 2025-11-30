@@ -87,9 +87,21 @@ export default function ProfileScreen({ navigation }: any) {
           <Text style={styles.menuText}>Mes sessions</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
-          <Text style={styles.menuText}>Mes demandes</Text>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate('MyRequests')}
+        >
+          <Text style={styles.menuText}>📝 Mes demandes</Text>
         </TouchableOpacity>
+
+        {user?.isProvider && (
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => navigation.navigate('MyOffers')}
+          >
+            <Text style={styles.menuText}>💼 Mes offres</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>

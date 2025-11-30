@@ -30,7 +30,7 @@ export default {
       favicon: "./assets/favicon.png",
     },
     extra: {
-      apiUrl: process.env.API_URL || "http://192.168.11.102:3000",
+      apiUrl: process.env.API_URL || "http://192.168.11.245:3000",
     },
   },
 };

@@ -5,16 +5,20 @@ import {
 import { providersService } from '../services/providers.service';
 import { sessionsService } from '../services/sessions.service';
 import { messagesService } from '../services/messages.service';
+import { reviewsService, Review } from '../services/reviews.service';
 import { getImageUrl } from '../utils/imageUtils';
 
 export default function ProviderDetailScreen({ route, navigation }: any) {
   const { providerId } = route.params;
   const [provider, setProvider] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingReviews, setLoadingReviews] = useState(true);
 
   useEffect(() => {
     loadData();
+    loadReviews();
   }, [providerId]);
 
   const loadData = async () => {
@@ -35,6 +39,17 @@ export default function ProviderDetailScreen({ route, navigation }: any) {
       navigation.goBack();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadReviews = async () => {
+    try {
+      const data = await reviewsService.getProviderReviews(providerId);
+      setReviews(data);
+    } catch (error) {
+      console.error('Error loading reviews:', error);
+    } finally {
+      setLoadingReviews(false);
     }
   };
 
@@ -66,6 +81,18 @@ export default function ProviderDetailScreen({ route, navigation }: any) {
       console.error('Error creating conversation:', error);
       Alert.alert('Erreur', 'Impossible de démarrer une conversation');
     }
+  };
+
+  const renderStars = (rating: number) => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <Text key={i} style={styles.star}>
+          {i <= rating ? '⭐' : '☆'}
+        </Text>
+      );
+    }
+    return stars;
   };
 
   if (loading) {
@@ -209,6 +236,49 @@ export default function ProviderDetailScreen({ route, navigation }: any) {
         )}
       </View>
 
+      {/* Reviews Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Avis ({reviews.length})</Text>
+
+        {loadingReviews ? (
+          <ActivityIndicator style={{ marginTop: 20 }} color="#6366f1" />
+        ) : reviews.length === 0 ? (
+          <Text style={styles.emptyText}>Aucun avis pour le moment</Text>
+        ) : (
+          reviews.map((review) => (
+            <View key={review.id} style={styles.reviewCard}>
+              <View style={styles.reviewHeader}>
+                {getImageUrl(review.reviewer.profile?.photo) ? (
+                  <Image
+                    source={{ uri: getImageUrl(review.reviewer.profile.photo)! }}
+                    style={styles.reviewAvatar}
+                  />
+                ) : (
+                  <View style={styles.reviewAvatar}>
+                    <Text style={styles.reviewAvatarText}>
+                      {review.reviewer.name?.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.reviewInfo}>
+                  <Text style={styles.reviewerName}>{review.reviewer.name}</Text>
+                  <View style={styles.reviewStars}>{renderStars(review.rating)}</View>
+                </View>
+                <Text style={styles.reviewDate}>
+                  {new Date(review.createdAt).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}
+                </Text>
+              </View>
+              {review.comment && (
+                <Text style={styles.reviewComment}>{review.comment}</Text>
+              )}
+            </View>
+          ))
+        )}
+      </View>
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -253,4 +323,14 @@ const styles = StyleSheet.create({
   sessionFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sessionDate: { fontSize: 12, color: '#6b7280' },
   sessionPrice: { fontSize: 16, fontWeight: 'bold', color: '#10b981' },
+  reviewCard: { backgroundColor: '#f9fafb', borderRadius: 12, padding: 16, marginBottom: 12 },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  reviewAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  reviewAvatarText: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  reviewInfo: { flex: 1 },
+  reviewerName: { fontSize: 15, fontWeight: '600', color: '#1f2937', marginBottom: 4 },
+  reviewStars: { flexDirection: 'row', gap: 2 },
+  star: { fontSize: 14 },
+  reviewDate: { fontSize: 12, color: '#9ca3af' },
+  reviewComment: { fontSize: 14, color: '#4b5563', lineHeight: 20, marginTop: 8 },
 });

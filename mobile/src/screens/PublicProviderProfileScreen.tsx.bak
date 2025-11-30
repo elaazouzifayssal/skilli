@@ -1,0 +1,517 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
+  Image,
+} from 'react-native';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useProviderProfileQuery } from '../services/providerProfiles';
+import { getImageUrl } from '../utils/imageUtils';
+
+/**
+ * PublicProviderProfileScreen
+ *
+ * Displays a public view of a provider's profile.
+ * Can be accessed from:
+ * - ProvidersListScreen (browsing providers)
+ * - Feed posts (tapping on provider name/avatar)
+ * - Any other place that links to a provider
+ *
+ * Navigation params:
+ * - providerId: string (userId of the provider)
+ */
+export default function PublicProviderProfileScreen() {
+  const route = useRoute<any>();
+  const navigation = useNavigation<any>();
+  const { providerId } = route.params;
+
+  // Fetch provider profile data
+  const { data: profile, isLoading, error } = useProviderProfileQuery(providerId);
+
+  // Debug logging
+  React.useEffect(() => {
+    if (profile) {
+      console.log('PublicProviderProfileScreen - Profile data:', JSON.stringify(profile, null, 2));
+      console.log('Profile user:', profile.user);
+      console.log('Profile experienceLevelNew:', profile.experienceLevelNew, typeof profile.experienceLevelNew);
+      console.log('Profile cities:', profile.cities);
+      console.log('Profile categories:', profile.categories);
+      console.log('Profile skills:', profile.skills);
+    }
+  }, [profile]);
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6366f1" />
+        <Text style={styles.loadingText}>Chargement du profil...</Text>
+      </View>
+    );
+  }
+
+  if (error || !profile) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle-outline" size={64} color="#ef4444" />
+        <Text style={styles.errorText}>Impossible de charger le profil</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>Retour</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const userName = String(profile.user?.name || 'Provider');
+  const userPhoto = profile.photo || profile.user?.profile?.photo;
+  const imageUri = getImageUrl(userPhoto);
+  const hasImage = imageUri !== null && imageUri !== undefined && typeof imageUri === 'string';
+
+  // Add defensive checks for all data
+  console.log('About to render - checking all values:');
+  console.log('userName:', userName, typeof userName);
+  console.log('imageUri:', imageUri, typeof imageUri);
+  console.log('hasImage:', hasImage);
+  console.log('experienceLevelNew:', profile.experienceLevelNew, typeof profile.experienceLevelNew);
+  console.log('experienceLevel:', profile.experienceLevel, typeof profile.experienceLevel);
+  console.log('rating:', profile.rating, typeof profile.rating);
+
+  return (
+    <ScrollView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Profil Provider</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      {/* Profile Card */}
+      <View style={styles.profileCard}>
+        {hasImage ? (
+          <Image source={{ uri: imageUri! }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarText}>{String(userName).charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
+
+        <Text style={styles.name}>{String(userName)}</Text>
+
+        {(profile.experienceLevelNew || profile.experienceLevel) && (
+          <Text style={styles.experienceLevel}>
+            {String(profile.experienceLevelNew || profile.experienceLevel || '').replace(/_/g, ' ')}
+          </Text>
+        )}
+
+        {/* Rating */}
+        {profile.rating && profile.rating > 0 && (
+          <View style={styles.ratingContainer}>
+            <Ionicons name="star" size={20} color="#f59e0b" style={{ marginRight: 6 }} />
+            <Text style={styles.ratingText}>
+              {String(profile.rating.toFixed(1))} ({String(profile.totalRatings || 0)} avis)
+            </Text>
+          </View>
+        )}
+
+        {/* Profile Status Badge */}
+        {profile.profileStatus === 'APPROVED' && (
+          <View style={styles.verifiedBadge}>
+            <Ionicons name="checkmark-circle" size={16} color="#10b981" style={{ marginRight: 6 }} />
+            <Text style={styles.verifiedText}>Profil vérifié</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Teaching Format & Cities */}
+      {(profile.teachingFormatNew || profile.teachingFormat) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Format d'enseignement</Text>
+          <View style={styles.tagContainer}>
+            <View style={styles.tag}>
+              <Ionicons
+                name={
+                  (profile.teachingFormatNew === 'ONLINE' || profile.teachingFormat === 'online')
+                    ? 'laptop-outline'
+                    : (profile.teachingFormatNew === 'IN_PERSON' || profile.teachingFormat === 'presential')
+                    ? 'location-outline'
+                    : 'globe-outline'
+                }
+                size={16}
+                color="#6366f1"
+              />
+              <Text style={styles.tagText}>
+                {(profile.teachingFormatNew === 'ONLINE' || profile.teachingFormat === 'online')
+                  ? 'En ligne'
+                  : (profile.teachingFormatNew === 'IN_PERSON' || profile.teachingFormat === 'presential')
+                  ? 'Présentiel'
+                  : 'Les deux'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Cities */}
+      {((profile.cities && Array.isArray(profile.cities) && profile.cities.length > 0) || profile.city) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Villes</Text>
+          <View style={styles.tagContainer}>
+            {profile.cities && Array.isArray(profile.cities) && profile.cities.length > 0 ? (
+              profile.cities.map((city, index) => (
+                <View key={index} style={styles.tag}>
+                  <Ionicons name="location" size={16} color="#6366f1" />
+                  <Text style={styles.tagText}>{String(city)}</Text>
+                </View>
+              ))
+            ) : profile.city ? (
+              <View style={styles.tag}>
+                <Ionicons name="location" size={16} color="#6366f1" />
+                <Text style={styles.tagText}>{String(profile.city)}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      )}
+
+      {/* Bio */}
+      {profile.bio && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>À propos</Text>
+          <Text style={styles.bioText}>{String(profile.bio)}</Text>
+        </View>
+      )}
+
+      {/* Categories */}
+      {profile.categories && Array.isArray(profile.categories) && profile.categories.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Catégories</Text>
+          <View style={styles.chipContainer}>
+            {profile.categories.map((category, index) => (
+              <View key={index} style={styles.chip}>
+                <Text style={styles.chipText}>{String(category)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Skills */}
+      {profile.skills && Array.isArray(profile.skills) && profile.skills.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Compétences</Text>
+          <View style={styles.chipContainer}>
+            {profile.skills.map((skill, index) => (
+              <View key={index} style={[styles.chip, styles.skillChip]}>
+                <Text style={styles.chipText}>{String(skill)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Pricing */}
+      {(profile.hourlyRateType || profile.pricingTier || profile.hourlyRate) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tarification</Text>
+          <View style={styles.pricingCard}>
+            <Ionicons name="cash-outline" size={24} color="#10b981" />
+            <View style={styles.pricingInfo}>
+              <Text style={styles.pricingType}>
+                {profile.hourlyRateType === 'BASIC' || profile.pricingTier === 'basic'
+                  ? 'Basique (50-100 MAD/h)'
+                  : profile.hourlyRateType === 'STANDARD' || profile.pricingTier === 'standard'
+                  ? 'Standard (100-200 MAD/h)'
+                  : profile.hourlyRateType === 'PREMIUM' || profile.pricingTier === 'premium'
+                  ? 'Premium (200-500 MAD/h)'
+                  : 'Tarif personnalisé'}
+              </Text>
+              {profile.hourlyRateMin && profile.hourlyRateMax ? (
+                <Text style={styles.pricingRange}>
+                  {String(profile.hourlyRateMin)} - {String(profile.hourlyRateMax)} MAD/h
+                </Text>
+              ) : profile.hourlyRate ? (
+                <Text style={styles.pricingRange}>
+                  {String(profile.hourlyRate)} MAD/h
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Verification Status */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Vérifications</Text>
+        <View style={styles.verificationList}>
+          <View style={styles.verificationItem}>
+            <Ionicons
+              name={profile.isEmailVerified ? 'checkmark-circle' : 'close-circle'}
+              size={20}
+              color={profile.isEmailVerified ? '#10b981' : '#9ca3af'}
+            />
+            <Text style={styles.verificationText}>Email vérifié</Text>
+          </View>
+          <View style={styles.verificationItem}>
+            <Ionicons
+              name={profile.isPhoneVerified ? 'checkmark-circle' : 'close-circle'}
+              size={20}
+              color={profile.isPhoneVerified ? '#10b981' : '#9ca3af'}
+            />
+            <Text style={styles.verificationText}>Téléphone vérifié</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Contact Button */}
+      <TouchableOpacity
+        style={styles.contactButton}
+        onPress={() => {
+          // TODO: Navigate to chat or contact flow
+          console.log('Contact provider:', providerId);
+        }}
+      >
+        <Ionicons name="chatbubble-outline" size={20} color="#fff" />
+        <Text style={styles.contactButtonText}>Contacter</Text>
+      </TouchableOpacity>
+
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6b7280',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 18,
+    color: '#ef4444',
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  backButton: {
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 60,
+    paddingBottom: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  profileCard: {
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 16,
+  },
+  avatarPlaceholder: {
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 40,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  name: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  experienceLevel: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 12,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  ratingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#f59e0b',
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 12,
+  },
+  verifiedText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#10b981',
+  },
+  section: {
+    backgroundColor: '#fff',
+    padding: 20,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 12,
+  },
+  bioText: {
+    fontSize: 15,
+    color: '#4b5563',
+    lineHeight: 24,
+  },
+  tagContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ede9fe',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  tagText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6366f1',
+  },
+  chipContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  skillChip: {
+    backgroundColor: '#dbeafe',
+  },
+  chipText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  pricingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#f0fdf4',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  pricingInfo: {
+    flex: 1,
+  },
+  pricingType: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#10b981',
+    marginBottom: 4,
+  },
+  pricingRange: {
+    fontSize: 14,
+    color: '#059669',
+  },
+  verificationList: {
+    gap: 12,
+  },
+  verificationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  verificationText: {
+    fontSize: 15,
+    color: '#4b5563',
+  },
+  contactButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#6366f1',
+    marginHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  contactButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  headerSpacer: {
+    width: 40,
+  },
+});

@@ -70,14 +70,18 @@ export default function MySessionsScreen({ navigation }: any) {
     });
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, sessionDate: string) => {
+    // If session has passed, show as completed regardless of booking status
+    const isPast = new Date(sessionDate) < new Date();
+    const actualStatus = (status === 'confirmed' && isPast) ? 'completed' : status;
+
     const styles = {
       confirmed: { bg: '#dbeafe', text: 'Confirmé' },
       completed: { bg: '#d1fae5', text: 'Terminé' },
       cancelled: { bg: '#fee2e2', text: 'Annulé' },
       pending: { bg: '#fef3c7', text: 'En attente' },
     };
-    const style = styles[status as keyof typeof styles] || styles.pending;
+    const style = styles[actualStatus as keyof typeof styles] || styles.pending;
     return (
       <View style={[statusStyles.badge, { backgroundColor: style.bg }]}>
         <Text style={statusStyles.badgeText}>{style.text}</Text>
@@ -94,7 +98,7 @@ export default function MySessionsScreen({ navigation }: any) {
         <Text style={styles.title} numberOfLines={1}>
           {item.session.title}
         </Text>
-        {getStatusBadge(item.status)}
+        {getStatusBadge(item.status, item.session.date)}
       </View>
 
       <View style={styles.providerRow}>
@@ -123,10 +127,13 @@ export default function MySessionsScreen({ navigation }: any) {
         </TouchableOpacity>
       )}
 
-      {item.status === 'completed' && !item.rating && (
+      {((item.status === 'completed' || (item.status === 'confirmed' && new Date(item.session.date) < new Date())) && !item.rating) && (
         <TouchableOpacity
           style={styles.rateButton}
-          onPress={() => navigation.navigate('RateSession', { bookingId: item.id })}
+          onPress={() => navigation.navigate('RateSession', {
+            session: item.session,
+            providerId: item.session.providerId
+          })}
         >
           <Text style={styles.rateButtonText}>⭐ Noter la session</Text>
         </TouchableOpacity>

@@ -41,8 +41,44 @@ model User {
   receivedMessages Message[]  @relation("ReceivedMessages")
   conversations1   Conversation[] @relation("User1Conversations")
   conversations2   Conversation[] @relation("User2Conversations")
+  writtenReviews   Review[]   @relation("WrittenReviews") // Reviews written by this user
+  receivedReviews  Review[]   @relation("ReceivedReviews") // Reviews received by this user (as provider)
+  requests         Request[]  @relation("ClientRequests") // Requests created by this user (as client)
+  offers           Offer[]    @relation("ProviderOffers") // Offers submitted by this user (as provider)
+  posts            Post[]     @relation("UserPosts") // Posts created by this user (as provider)
+  postLikes        PostLike[] @relation("UserPostLikes") // Likes on posts by this user
 
   @@map("users")
+}
+
+// Enums for ProviderProfile
+enum TeachingFormat {
+  ONLINE
+  IN_PERSON
+  BOTH
+}
+
+enum ExperienceLevel {
+  STUDENT
+  ENGINEERING_STUDENT
+  JUNIOR_ENGINEER
+  TEACHER
+  FREELANCER
+  EXPERT
+}
+
+enum HourlyRateType {
+  BASIC
+  STANDARD
+  PREMIUM
+  CUSTOM
+}
+
+enum ProfileStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  SUSPENDED
 }
 
 // Provider profile - additional info for providers
@@ -54,16 +90,50 @@ model ProviderProfile {
   // Provider details
   bio         String?
   photo       String?  // URL to profile photo
-  city        String?
+
+  // Legacy fields (keeping for backward compatibility with existing mobile app)
+  // TODO: Remove these once mobile app fully migrated to new structure
+  city        String?  // Deprecated: use cities array instead
   languages   String[] // e.g., ["Français", "Arabe", "Anglais"]
+  level       String?  // Deprecated: replaced by experienceLevel enum
 
-  // Education level (e.g., "Bac+5", "Bac+3")
-  level       String?
+  // Skills and categories (many-to-many relations for better scalability)
+  categoryRelations   ProviderCategory[]  // Categories this provider teaches
+  skillRelations      ProviderSkill[]     // Specific skills this provider offers
 
-  // Skills/categories (we'll link to Skills table later)
-  skills      String[] // For now, array of skill names
+  // Legacy arrays (keeping for backward compatibility)
+  // TODO: Migrate data to relational tables, then remove these
+  skills          String[] @default([])    // Original field name preserved
+  categories      String[] @default([])    // Original field name preserved
 
-  // Rating
+  // Teaching format & locations
+  teachingFormatNew  TeachingFormat?  @map("teaching_format_enum")    // New enum field
+  teachingFormat     String?          // Legacy string field (for backward compatibility)
+  cities             String[]  @default([])  // Cities for in-person sessions (e.g., ["Casablanca", "Rabat"])
+  availability       String?          // JSON string or text for availability
+
+  // Experience level
+  experienceLevelNew ExperienceLevel? @map("experience_level_enum") // New enum field
+  experienceLevel    String?          // Legacy string field (for backward compatibility)
+  studyYear          String?          // If student/engineering student, their year (e.g., "1ère année", "Master 1")
+  studentYear        String?          // Alternative field name for same purpose (backward compat)
+
+  // Pricing
+  hourlyRateType  HourlyRateType?      // Pricing tier
+  pricingTier     String?              // Legacy string tier (for backward compatibility)
+  hourlyRateMin   Int?                 // Minimum hourly rate in MAD (for CUSTOM tier)
+  hourlyRateMax   Int?                 // Maximum hourly rate in MAD (for CUSTOM tier)
+  hourlyRate      Float?               // Legacy: single hourly rate (for backward compatibility)
+
+  // Profile status and verification
+  profileStatus      ProfileStatus @default(DRAFT)
+  isPhoneVerified    Boolean       @default(false)  // TODO: Implement SMS verification flow
+  isEmailVerified    Boolean       @default(false)  // TODO: Implement email verification flow
+
+  // Onboarding
+  onboardingCompleted Boolean @default(false)
+
+  // Rating (calculated from reviews)
   rating      Float    @default(0.0)
   totalRatings Int     @default(0)
 
@@ -72,6 +142,78 @@ model ProviderProfile {
   updatedAt   DateTime @updatedAt
 
   @@map("provider_profiles")
+  @@index([rating])
+  @@index([profileStatus])
+  @@index([experienceLevel])
+  @@index([teachingFormat])
+}
+
+// Category model - broader skill categories
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique  // e.g., "Éducation", "Technologie", "Business"
+  slug      String   @unique  // URL-friendly version
+  description String?
+
+  // Relations
+  providers ProviderCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("categories")
+}
+
+// Skill model - specific skills within categories
+model Skill {
+  id          String   @id @default(uuid())
+  name        String   @unique  // e.g., "React", "Python", "Mathématiques"
+  slug        String   @unique
+  description String?
+
+  // Relations
+  providers   ProviderSkill[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("skills")
+}
+
+// Junction table for Provider-Category many-to-many
+model ProviderCategory {
+  id        String   @id @default(uuid())
+
+  providerId String
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+
+  @@unique([providerId, categoryId])
+  @@map("provider_categories")
+  @@index([providerId])
+  @@index([categoryId])
+}
+
+// Junction table for Provider-Skill many-to-many
+model ProviderSkill {
+  id        String   @id @default(uuid())
+
+  providerId String
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  skillId   String
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([providerId, skillId])
+  @@map("provider_skills")
+  @@index([providerId])
+  @@index([skillId])
 }
 
 // Refresh tokens for JWT authentication
@@ -117,17 +259,23 @@ model Session {
   // Status
   status      String   @default("upcoming") // upcoming, completed, cancelled
 
+  // Rating (calculated from reviews)
+  rating      Float    @default(0.0)
+  totalRatings Int     @default(0)
+
   // Timestamps
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
   bookings    Booking[]
+  reviews     Review[]
 
   @@map("sessions")
   @@index([providerId])
   @@index([date])
   @@index([status])
+  @@index([rating])
 }
 
 // Booking model - when a client books a session
@@ -241,4 +389,157 @@ model Message {
   @@index([senderId])
   @@index([receiverId])
   @@index([createdAt])
+}
+
+// Review model - reviews and ratings for sessions and providers
+model Review {
+  id         String   @id @default(uuid())
+
+  // Who wrote the review (the attendee)
+  reviewerId String
+  reviewer   User     @relation("WrittenReviews", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  // Who receives the review (the provider)
+  providerId String
+  provider   User     @relation("ReceivedReviews", fields: [providerId], references: [id], onDelete: Cascade)
+
+  // Which session this review is for
+  sessionId  String
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Rating and comment
+  rating     Int      // 1-5 stars
+  comment    String?  // Optional text review
+
+  // Timestamps
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("reviews")
+  @@unique([reviewerId, sessionId]) // One review per session per attendee
+  @@index([providerId])
+  @@index([sessionId])
+  @@index([rating])
+  @@index([createdAt])
+}
+
+// Request model - service requests created by clients
+model Request {
+  id          String   @id @default(uuid())
+
+  // Who created the request (client)
+  requesterId String
+  requester   User     @relation("ClientRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+
+  // Request details
+  title       String
+  description String
+  skills      String[] // Required skills/categories
+  level       String?  // Education level requirement (e.g., "Bac+5", "Bac+3")
+  location    String?  // City or "En ligne"
+  requestType String   @default("online") // online, presential, both
+
+  // Budget range
+  budgetMin   Float?   // Minimum budget in MAD
+  budgetMax   Float?   // Maximum budget in MAD
+
+  // Status
+  status      String   @default("open") // open, in_progress, completed, cancelled
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  offers      Offer[]
+
+  @@map("requests")
+  @@index([requesterId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([requestType])
+}
+
+// Offer model - offers submitted by providers for requests
+model Offer {
+  id        String   @id @default(uuid())
+
+  // Which request this offer is for
+  requestId String
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  // Who submitted the offer (provider)
+  providerId String
+  provider   User     @relation("ProviderOffers", fields: [providerId], references: [id], onDelete: Cascade)
+
+  // Offer details
+  message   String   // Provider's message/proposal
+  price     Float    // Proposed price in MAD
+  duration  Int      // Estimated duration in hours
+  firstAvailableDate DateTime? // When provider can start
+
+  // Status
+  status    String   @default("pending") // pending, accepted, rejected
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("offers")
+  @@unique([requestId, providerId]) // One offer per request per provider
+  @@index([requestId])
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Post model - posts/updates from providers in the feed
+model Post {
+  id        String   @id @default(uuid())
+
+  // Who created the post (provider)
+  authorId  String
+  author    User     @relation("UserPosts", fields: [authorId], references: [id], onDelete: Cascade)
+
+  // Post content
+  content   String   // Text content of the post
+  skills    String[] // Related skills/categories
+  category  String?  // Optional category (e.g., "Tips", "News", "Success Story")
+
+  // Engagement metrics
+  likeCount    Int   @default(0)
+  commentCount Int   @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  likes     PostLike[]
+
+  @@map("posts")
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([likeCount])
+}
+
+// PostLike model - likes on posts
+model PostLike {
+  id        String   @id @default(uuid())
+
+  // Which post was liked
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // Who liked it
+  userId    String
+  user      User     @relation("UserPostLikes", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Timestamp
+  createdAt DateTime @default(now())
+
+  @@map("post_likes")
+  @@unique([postId, userId]) // One like per user per post
+  @@index([postId])
+  @@index([userId])
 }

@@ -25,12 +25,25 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import ConversationsScreen from '../screens/ConversationsScreen';
 import ChatScreen from '../screens/ChatScreen';
+import CreateRequestScreen from '../screens/CreateRequestScreen';
+import EditRequestScreen from '../screens/EditRequestScreen';
+import RequestDetailsScreen from '../screens/RequestDetailsScreen';
+import SendOfferScreen from '../screens/SendOfferScreen';
+import MyRequestsScreen from '../screens/requests/MyRequestsScreen';
+import MyOffersScreen from '../screens/offers/MyOffersScreen';
+import RequestsListScreen from '../screens/RequestsListScreen';
+import { FeedScreen } from '../screens/FeedScreen';
+import { CreatePostScreen } from '../screens/CreatePostScreen';
+import { PostDetailScreen } from '../screens/PostDetailScreen';
+import PublicProviderProfileScreen from '../screens/PublicProviderProfileScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // Bottom tabs for authenticated users
 function MainTabs() {
+  const { user } = useAuthStore();
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -45,9 +58,19 @@ function MainTabs() {
         options={{ tabBarLabel: 'Accueil' }}
       />
       <Tab.Screen
-        name="Explore"
+        name="Providers"
         component={ProvidersListScreen}
         options={{ tabBarLabel: 'Providers' }}
+      />
+      <Tab.Screen
+        name="Feed"
+        component={FeedScreen}
+        options={{ tabBarLabel: 'Feed' }}
+      />
+      <Tab.Screen
+        name="Requests"
+        component={user?.isProvider ? RequestsListScreen : MyRequestsScreen}
+        options={{ tabBarLabel: 'Demandes' }}
       />
       <Tab.Screen
         name="Messages"
@@ -105,7 +128,16 @@ export default function AppNavigator() {
             <Stack.Screen name="MySessions" component={MySessionsScreen} />
             <Stack.Screen name="RateSession" component={RateSessionScreen} />
             <Stack.Screen name="ProviderDetail" component={ProviderDetailScreen} />
+            <Stack.Screen name="PublicProviderProfile" component={PublicProviderProfileScreen} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+            <Stack.Screen name="CreateRequest" component={CreateRequestScreen} />
+            <Stack.Screen name="EditRequest" component={EditRequestScreen} />
+            <Stack.Screen name="RequestDetails" component={RequestDetailsScreen} />
+            <Stack.Screen name="SendOffer" component={SendOfferScreen} />
+            <Stack.Screen name="MyRequests" component={MyRequestsScreen} />
+            <Stack.Screen name="MyOffers" component={MyOffersScreen} />
+            <Stack.Screen name="CreatePost" component={CreatePostScreen} />
+            <Stack.Screen name="PostDetail" component={PostDetailScreen} />
           </>
         )}
       </Stack.Navigator>

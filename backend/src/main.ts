@@ -28,7 +28,7 @@ async function bootstrap() {
 
   console.log(`🚀 Backend server is running on:`);
   console.log(`   Local:   http://localhost:${port}/api`);
-  console.log(`   Network: http://192.168.11.102:${port}/api`);
+  console.log(`   Network: http://192.168.11.245:${port}/api`);
 }
 
 bootstrap();

@@ -1,425 +1,482 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  SafeAreaView,
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { providerProfileService } from '../../services/provider-profile.service';
+import { useNavigation, CommonActions } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
-import { MOROCCAN_CITIES } from '../../constants/moroccanCities';
-import { EDUCATION_LEVELS } from '../../constants/educationLevels';
-import { SKILLS_CATEGORIES, LANGUAGES } from '../../constants/skills';
+import { useProviderOnboardingStore, useWizardActions } from '../../store/providerOnboardingStore';
+import {
+  useMyProviderProfileQuery,
+  useUpsertMyProviderProfileMutation,
+} from '../../services/providerProfiles';
+import { TeachingFormat, HourlyRateType, ExperienceLevel } from '../../types/providerProfile';
+import { Step1CategoriesSkills } from '../../components/onboarding/Step1CategoriesSkills';
+import { Step2TeachingFormat } from '../../components/onboarding/Step2TeachingFormat';
+import { Step3Experience } from '../../components/onboarding/Step3Experience';
+import { Step4Pricing } from '../../components/onboarding/Step4Pricing';
+import { Step5Bio } from '../../components/onboarding/Step5Bio';
+import { PRICING_TIERS } from '../../constants/onboarding';
 
-export default function BecomeProviderScreen({ navigation }: any) {
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const { user, loadTokens } = useAuthStore();
+// ============================================================================
+// ENUM CONVERSION HELPERS
+// ============================================================================
 
-  // Form data
-  const [bio, setBio] = useState('');
-  const [city, setCity] = useState('');
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
-  const [level, setLevel] = useState('');
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+/** Convert TeachingFormat enum to legacy string */
+const formatToLegacy = (format: TeachingFormat | null): string => {
+  if (!format) return '';
+  switch (format) {
+    case TeachingFormat.ONLINE:
+      return 'online';
+    case TeachingFormat.IN_PERSON:
+      return 'presential';
+    case TeachingFormat.BOTH:
+      return 'both';
+    default:
+      return '';
+  }
+};
 
-  const handleSubmit = async () => {
-    if (!bio || !city || selectedLanguages.length === 0 || !level || selectedSkills.length === 0) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await providerProfileService.createOrUpdate({
-        bio,
-        city,
-        languages: selectedLanguages,
-        level,
-        skills: selectedSkills,
-      });
-
-      // Reload user data to update isProvider status
-      await loadTokens();
-
-      Alert.alert('Succès', 'Votre profil provider a été créé!', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (error: any) {
-      Alert.alert('Erreur', error.message || 'Une erreur est survenue');
-    } finally {
-      setLoading(false);
-    }
+/** Convert legacy string to TeachingFormat enum */
+const legacyToFormat = (format: string): TeachingFormat | null => {
+  const formatMap: Record<string, TeachingFormat> = {
+    online: TeachingFormat.ONLINE,
+    presential: TeachingFormat.IN_PERSON,
+    both: TeachingFormat.BOTH,
   };
+  return formatMap[format] || null;
+};
 
-  const toggleLanguage = (lang: string) => {
-    if (selectedLanguages.includes(lang)) {
-      setSelectedLanguages(selectedLanguages.filter(l => l !== lang));
+/** Convert ExperienceLevel enum to legacy string */
+const experienceToLegacy = (level: ExperienceLevel | null): string => {
+  if (!level) return '';
+  switch (level) {
+    case ExperienceLevel.STUDENT:
+      return 'student';
+    case ExperienceLevel.ENGINEERING_STUDENT:
+      return 'engineering_student';
+    case ExperienceLevel.JUNIOR_ENGINEER:
+      return 'junior_engineer';
+    case ExperienceLevel.TEACHER:
+      return 'teacher';
+    case ExperienceLevel.FREELANCER:
+      return 'freelance';
+    case ExperienceLevel.EXPERT:
+      return 'expert';
+    default:
+      return '';
+  }
+};
+
+/** Convert legacy string to ExperienceLevel enum */
+const legacyToExperience = (level: string): ExperienceLevel | null => {
+  const levelMap: Record<string, ExperienceLevel> = {
+    student: ExperienceLevel.STUDENT,
+    engineering_student: ExperienceLevel.ENGINEERING_STUDENT,
+    junior_engineer: ExperienceLevel.JUNIOR_ENGINEER,
+    teacher: ExperienceLevel.TEACHER,
+    freelance: ExperienceLevel.FREELANCER,
+    expert: ExperienceLevel.EXPERT,
+  };
+  return levelMap[level] || null;
+};
+
+/** Convert HourlyRateType enum to legacy string */
+const rateTypeToLegacy = (type: HourlyRateType | null): string => {
+  if (!type) return '';
+  switch (type) {
+    case HourlyRateType.BASIC:
+      return 'basic';
+    case HourlyRateType.STANDARD:
+      return 'standard';
+    case HourlyRateType.PREMIUM:
+      return 'premium';
+    case HourlyRateType.CUSTOM:
+      return 'custom';
+    default:
+      return '';
+  }
+};
+
+/** Convert legacy string to HourlyRateType enum */
+const legacyToRateType = (type: string): HourlyRateType | null => {
+  const typeMap: Record<string, HourlyRateType> = {
+    basic: HourlyRateType.BASIC,
+    standard: HourlyRateType.STANDARD,
+    premium: HourlyRateType.PREMIUM,
+    custom: HourlyRateType.CUSTOM,
+  };
+  return typeMap[type] || null;
+};
+
+const TOTAL_STEPS = 5;
+
+export default function BecomeProviderScreen() {
+  const navigation = useNavigation();
+  const queryClient = useQueryClient();
+  const [currentStep, setCurrentStep] = useState(1);
+
+  // Fetch existing profile (if any) for edit mode
+  const { data: existingProfile, isLoading: isLoadingProfile } = useMyProviderProfileQuery();
+
+  // Wizard store and actions
+  const { loadFromProfile, buildPayloadForApi, reset } = useWizardActions();
+  const isStepComplete = useProviderOnboardingStore((state) => state.isStepComplete);
+
+  // Load existing profile into wizard on mount
+  useEffect(() => {
+    if (existingProfile) {
+      console.log('Loading existing profile into wizard:', existingProfile);
+      loadFromProfile(existingProfile);
     } else {
-      setSelectedLanguages([...selectedLanguages, lang]);
+      // Start fresh if no profile exists
+      reset();
     }
+  }, [existingProfile]);
+
+  // Get wizard state from store
+  const step1 = useProviderOnboardingStore((state) => state.step1);
+  const step2 = useProviderOnboardingStore((state) => state.step2);
+  const step3 = useProviderOnboardingStore((state) => state.step3);
+  const step4 = useProviderOnboardingStore((state) => state.step4);
+  const step5 = useProviderOnboardingStore((state) => state.step5);
+
+  const setStep1 = useProviderOnboardingStore((state) => state.setStep1);
+  const setStep2 = useProviderOnboardingStore((state) => state.setStep2);
+  const setStep3 = useProviderOnboardingStore((state) => state.setStep3);
+  const setStep4 = useProviderOnboardingStore((state) => state.setStep4);
+  const setStep5 = useProviderOnboardingStore((state) => state.setStep5);
+
+  // Use the new mutation hook
+  const createProviderMutation = useUpsertMyProviderProfileMutation();
+
+  const handleSuccess = () => {
+    // The backend automatically marks user as provider
+    queryClient.invalidateQueries({ queryKey: ['user'] });
+
+    // Reset wizard state
+    reset();
+
+    Alert.alert(
+      'Félicitations ! 🎉',
+      existingProfile
+        ? 'Ton profil provider a été mis à jour avec succès !'
+        : 'Ton profil provider est créé ! Tu peux maintenant commencer à créer des sessions et partager ton expertise.',
+      [
+        {
+          text: 'Commencer',
+          onPress: () => {
+            // Reset navigation to go back to main tabs
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'MainTabs' as never }],
+              })
+            );
+          },
+        },
+      ]
+    );
   };
 
-  const toggleSkill = (skill: string) => {
-    if (selectedSkills.includes(skill)) {
-      setSelectedSkills(selectedSkills.filter(s => s !== skill));
+  const handleError = (error: any) => {
+    console.error('Provider profile creation error:', error);
+    console.error('Error response:', error.response?.data);
+
+    let errorMessage = 'Impossible de créer le profil provider';
+
+    if (error.response?.data?.message) {
+      if (Array.isArray(error.response.data.message)) {
+        errorMessage = error.response.data.message.join(', ');
+      } else {
+        errorMessage = error.response.data.message;
+      }
+    }
+
+    Alert.alert('Erreur', errorMessage);
+  };
+
+  const canGoNext = () => {
+    // Use the validation logic from the store
+    return isStepComplete(currentStep);
+  };
+
+  const handleNext = () => {
+    if (currentStep < TOTAL_STEPS) {
+      setCurrentStep(currentStep + 1);
     } else {
-      setSelectedSkills([...selectedSkills, skill]);
+      handleSubmit();
     }
   };
 
-  const renderStepIndicator = () => (
-    <View style={styles.stepIndicator}>
-      {[1, 2, 3, 4].map((s) => (
-        <View
-          key={s}
-          style={[styles.stepDot, step >= s && styles.stepDotActive]}
-        />
-      ))}
-    </View>
-  );
+  const handlePrevious = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
 
-  const renderStep1 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Parlez-nous de vous</Text>
-      <Text style={styles.stepDescription}>
-        Rédigez une courte bio pour présenter votre expertise
-      </Text>
+  const handleSubmit = () => {
+    // Build payload from wizard state using store's builder
+    const payload = buildPayloadForApi();
 
-      <TextInput
-        style={styles.textarea}
-        placeholder="Ex: Ingénieur en informatique avec 5 ans d'expérience en React et Node.js..."
-        value={bio}
-        onChangeText={setBio}
-        multiline
-        numberOfLines={6}
-        textAlignVertical="top"
-      />
+    console.log('Submitting provider profile:', payload);
 
-      <TouchableOpacity
-        style={styles.nextButton}
-        onPress={() => bio.trim().length >= 10 ? setStep(2) : Alert.alert('Erreur', 'Votre bio doit contenir au moins 10 caractères')}
-      >
-        <Text style={styles.nextButtonText}>Continuer</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    // Submit to backend API
+    createProviderMutation.mutate(payload, {
+      onSuccess: handleSuccess,
+      onError: handleError,
+    });
+  };
 
-  const renderStep2 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Localisation et niveau</Text>
-
-      <Text style={styles.label}>Ville</Text>
-      <ScrollView style={styles.optionsContainer} horizontal showsHorizontalScrollIndicator={false}>
-        {MOROCCAN_CITIES.map((c) => (
-          <TouchableOpacity
-            key={c}
-            style={[styles.optionChip, city === c && styles.optionChipSelected]}
-            onPress={() => setCity(c)}
-          >
-            <Text style={[styles.optionText, city === c && styles.optionTextSelected]}>
-              {c}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <Text style={styles.label}>Votre niveau d'études</Text>
-      <ScrollView style={styles.optionsContainer} horizontal showsHorizontalScrollIndicator={false}>
-        {EDUCATION_LEVELS.map((l) => (
-          <TouchableOpacity
-            key={l}
-            style={[styles.optionChip, level === l && styles.optionChipSelected]}
-            onPress={() => setLevel(l)}
-          >
-            <Text style={[styles.optionText, level === l && styles.optionTextSelected]}>
-              {l}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.backButton} onPress={() => setStep(1)}>
-          <Text style={styles.backButtonText}>Retour</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.nextButton}
-          onPress={() => city && level ? setStep(3) : Alert.alert('Erreur', 'Veuillez sélectionner une ville et un niveau')}
-        >
-          <Text style={styles.nextButtonText}>Continuer</Text>
-        </TouchableOpacity>
+  const renderProgressBar = () => {
+    const progress = (currentStep / TOTAL_STEPS) * 100;
+    return (
+      <View style={styles.progressContainer}>
+        <View style={styles.progressBar}>
+          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+        </View>
+        <Text style={styles.progressText}>
+          Étape {currentStep} sur {TOTAL_STEPS}
+        </Text>
       </View>
-    </View>
-  );
+    );
+  };
 
-  const renderStep3 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Langues parlées</Text>
-      <Text style={styles.stepDescription}>
-        Sélectionnez les langues que vous parlez
-      </Text>
+  const renderStep = () => {
+    switch (currentStep) {
+      case 1:
+        // Categories & Skills
+        return (
+          <Step1CategoriesSkills
+            selectedCategories={step2.categories}
+            selectedSkills={step2.skills}
+            onCategoriesChange={(categories) => setStep2({ categories })}
+            onSkillsChange={(skills) => setStep2({ skills })}
+          />
+        );
+      case 2:
+        // Teaching Format & Location
+        return (
+          <Step2TeachingFormat
+            teachingFormat={formatToLegacy(step1.teachingFormat)}
+            city={step1.cities[0] || ''}
+            onTeachingFormatChange={(format) => {
+              setStep1({ teachingFormat: legacyToFormat(format) });
+            }}
+            onCityChange={(city) => setStep1({ cities: city ? [city] : [] })}
+          />
+        );
+      case 3:
+        // Experience Level
+        return (
+          <Step3Experience
+            experienceLevel={experienceToLegacy(step2.experienceLevel)}
+            studentYear={step2.studyYear || ''}
+            onExperienceLevelChange={(level) => {
+              setStep2({ experienceLevel: legacyToExperience(level) });
+            }}
+            onStudentYearChange={(year) => setStep2({ studyYear: year })}
+          />
+        );
+      case 4:
+        // Pricing
+        return (
+          <Step4Pricing
+            pricingTier={rateTypeToLegacy(step3.hourlyRateType)}
+            customPrice={step3.hourlyRateMin?.toString() || ''}
+            onPricingTierChange={(tier) => {
+              setStep3({ hourlyRateType: legacyToRateType(tier) });
+            }}
+            onCustomPriceChange={(price) => {
+              const numPrice = parseFloat(price) || 0;
+              setStep3({ hourlyRateMin: numPrice, hourlyRateMax: numPrice });
+            }}
+          />
+        );
+      case 5:
+        // Bio
+        return (
+          <Step5Bio
+            bio={step5.bio}
+            experienceLevel={step2.experienceLevel || ''}
+            studentYear={step2.studyYear || ''}
+            selectedSkills={step2.skills}
+            onBioChange={(bio) => setStep5({ bio })}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
-      <View style={styles.chipsWrap}>
-        {LANGUAGES.map((lang) => (
+  // Show loading while fetching existing profile
+  if (isLoadingProfile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color="#1976D2" />
+          <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>
+            Chargement de votre profil...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="close" size={28} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {existingProfile ? 'Modifier mon profil' : 'Devenir Provider'}
+        </Text>
+        <View style={{ width: 28 }} />
+      </View>
+
+      {/* Progress Bar */}
+      {renderProgressBar()}
+
+      {/* Step Content */}
+      <View style={styles.content}>{renderStep()}</View>
+
+      {/* Navigation Buttons */}
+      <View style={styles.footer}>
+        {currentStep > 1 && (
           <TouchableOpacity
-            key={lang}
-            style={[styles.chip, selectedLanguages.includes(lang) && styles.chipSelected]}
-            onPress={() => toggleLanguage(lang)}
+            style={styles.previousButton}
+            onPress={handlePrevious}
           >
-            <Text style={[styles.chipText, selectedLanguages.includes(lang) && styles.chipTextSelected]}>
-              {lang}
-            </Text>
+            <Ionicons name="arrow-back" size={20} color="#666" />
+            <Text style={styles.previousButtonText}>Précédent</Text>
           </TouchableOpacity>
-        ))}
-      </View>
+        )}
 
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.backButton} onPress={() => setStep(2)}>
-          <Text style={styles.backButtonText}>Retour</Text>
-        </TouchableOpacity>
         <TouchableOpacity
-          style={styles.nextButton}
-          onPress={() => selectedLanguages.length > 0 ? setStep(4) : Alert.alert('Erreur', 'Sélectionnez au moins une langue')}
+          style={[
+            styles.nextButton,
+            !canGoNext() && styles.nextButtonDisabled,
+            currentStep === 1 && styles.nextButtonFull,
+          ]}
+          onPress={handleNext}
+          disabled={!canGoNext() || createProviderMutation.isPending}
         >
-          <Text style={styles.nextButtonText}>Continuer</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderStep4 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Vos compétences</Text>
-      <Text style={styles.stepDescription}>
-        Sélectionnez les domaines dans lesquels vous pouvez aider
-      </Text>
-
-      <ScrollView style={styles.skillsScroll}>
-        {Object.entries(SKILLS_CATEGORIES).map(([category, skills]) => (
-          <View key={category} style={styles.skillCategory}>
-            <Text style={styles.categoryTitle}>{category}</Text>
-            <View style={styles.chipsWrap}>
-              {skills.map((skill) => (
-                <TouchableOpacity
-                  key={skill}
-                  style={[styles.chip, selectedSkills.includes(skill) && styles.chipSelected]}
-                  onPress={() => toggleSkill(skill)}
-                >
-                  <Text style={[styles.chipText, selectedSkills.includes(skill) && styles.chipTextSelected]}>
-                    {skill}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.backButton} onPress={() => setStep(3)}>
-          <Text style={styles.backButtonText}>Retour</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.submitButton, loading && styles.buttonDisabled]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
+          {createProviderMutation.isPending ? (
+            <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={styles.submitButtonText}>Créer mon profil</Text>
+            <>
+              <Text style={styles.nextButtonText}>
+                {currentStep === TOTAL_STEPS ? 'Terminer' : 'Suivant'}
+              </Text>
+              <Ionicons name="arrow-forward" size={20} color="#fff" />
+            </>
           )}
         </TouchableOpacity>
       </View>
-    </View>
-  );
-
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Devenir Provider</Text>
-        {renderStepIndicator()}
-      </View>
-
-      {step === 1 && renderStep1()}
-      {step === 2 && renderStep2()}
-      {step === 3 && renderStep3()}
-      {step === 4 && renderStep4()}
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#fff',
   },
   header: {
-    backgroundColor: '#fff',
-    padding: 20,
-    paddingTop: 60,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 20,
-  },
-  stepIndicator: {
     flexDirection: 'row',
-    gap: 8,
-  },
-  stepDot: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 2,
-  },
-  stepDotActive: {
-    backgroundColor: '#6366f1',
-  },
-  stepContainer: {
-    padding: 20,
-  },
-  stepTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  stepDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  textarea: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    backgroundColor: '#fff',
-    minHeight: 120,
-  },
-  optionsContainer: {
-    maxHeight: 60,
-    marginBottom: 16,
-  },
-  optionChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#fff',
-    marginRight: 8,
-  },
-  optionChipSelected: {
-    backgroundColor: '#6366f1',
-    borderColor: '#6366f1',
-  },
-  optionText: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  optionTextSelected: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  chipsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#fff',
-  },
-  chipSelected: {
-    backgroundColor: '#6366f1',
-    borderColor: '#6366f1',
-  },
-  chipText: {
-    fontSize: 13,
-    color: '#374151',
-  },
-  chipTextSelected: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  skillsScroll: {
-    maxHeight: 400,
-  },
-  skillCategory: {
-    marginBottom: 24,
-  },
-  categoryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 12,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
-  },
-  backButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#6366f1',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
   },
-  backButtonText: {
-    color: '#6366f1',
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  progressContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#F5F5F5',
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#1976D2',
+    borderRadius: 3,
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    textAlign: 'center',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    gap: 12,
+  },
+  previousButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  previousButtonText: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#666',
   },
   nextButton: {
     flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#6366f1',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1976D2',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  nextButtonFull: {
+    flex: 1,
+  },
+  nextButtonDisabled: {
+    backgroundColor: '#BDBDBD',
   },
   nextButtonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  submitButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#10b981',
-    alignItems: 'center',
-  },
-  submitButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
 });
